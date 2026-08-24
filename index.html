@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL — Channel Tuner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<style>
+  :root{
+    --bg:#0D0F12;
+    --panel:#15181D;
+    --panel-raised:#1B1F26;
+    --line:#262B33;
+    --text:#E7EBEF;
+    --muted:#7B8592;
+    --phosphor:#39FF9E;
+    --phosphor-dim:#1E7A54;
+    --amber:#FFB238;
+    --red:#FF5C5C;
+    --font-display: 'Oswald', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-mono);
+    min-height:100vh;
+  }
+
+  /* faint scanline texture over whole page */
+  body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.015) 0px,
+      rgba(255,255,255,0.015) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index:999;
+  }
+
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:18px 28px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+
+  .brand .mark{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:22px;
+    letter-spacing:2px;
+    color:var(--text);
+  }
+  .brand .mark span{ color:var(--phosphor); }
+
+  .brand .sub{
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+  }
+
+  .status{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:11px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+
+  .status .dot{
+    width:8px; height:8px;
+    border-radius:50%;
+    background:var(--muted);
+    box-shadow:none;
+    transition:all .2s ease;
+  }
+  .status.live .dot{
+    background:var(--red);
+    box-shadow:0 0 8px 1px var(--red);
+    animation:pulse 1.4s infinite;
+  }
+  @keyframes pulse{
+    0%,100%{ opacity:1; }
+    50%{ opacity:.4; }
+  }
+
+  .layout{
+    display:grid;
+    grid-template-columns: 320px 1fr;
+    min-height: calc(100vh - 64px);
+  }
+
+  @media (max-width: 860px){
+    .layout{ grid-template-columns: 1fr; }
+  }
+
+  /* ---------- Preset rail ---------- */
+  .rail{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    padding:20px 16px 40px;
+    overflow-y:auto;
+  }
+
+  .rail-label{
+    font-family:var(--font-display);
+    font-size:12px;
+    letter-spacing:3px;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:4px 6px 14px;
+  }
+
+  .preset{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    border-left:3px solid transparent;
+    color:var(--text);
+    padding:13px 14px;
+    margin-bottom:8px;
+    border-radius:4px;
+    cursor:pointer;
+    text-align:left;
+    font-family:var(--font-mono);
+    transition: border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+  .preset:hover{
+    border-color:var(--phosphor-dim);
+    background:#1E232B;
+  }
+  .preset:active{ transform:scale(0.99); }
+
+  .preset.active{
+    border-left-color:var(--phosphor);
+    background:#182420;
+  }
+
+  .preset .led{
+    width:9px; height:9px;
+    border-radius:50%;
+    background:#33383F;
+    flex-shrink:0;
+    transition:all .2s ease;
+  }
+  .preset.active .led{
+    background:var(--phosphor);
+    box-shadow:0 0 8px 1px var(--phosphor);
+  }
+
+  .preset .meta{ display:flex; flex-direction:column; gap:2px; overflow:hidden; }
+  .preset .ch-num{
+    font-size:10px;
+    color:var(--muted);
+    letter-spacing:1px;
+  }
+  .preset .ch-name{
+    font-size:14px;
+    font-weight:500;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .preset.active .ch-name{ color:var(--phosphor); }
+
+  .rail-note{
+    margin-top:18px;
+    padding:12px 14px;
+    border:1px dashed var(--line);
+    border-radius:4px;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--muted);
+  }
+  .rail-note code{
+    color:var(--amber);
+    background:rgba(255,178,56,0.08);
+    padding:1px 4px;
+    border-radius:3px;
+  }
+
+  /* ---------- Monitor area ---------- */
+  .monitor-wrap{
+    display:flex;
+    flex-direction:column;
+    padding:28px;
+    gap:16px;
+  }
+
+  .screen{
+    position:relative;
+    width:100%;
+    aspect-ratio:16/9;
+    background:#000;
+    border:1px solid var(--line);
+    border-radius:6px;
+    overflow:hidden;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 20px 50px -20px rgba(0,0,0,0.7);
+  }
+
+  .screen video{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    background:#000;
+  }
+
+  .screen iframe{
+    width:100%;
+    height:100%;
+    border:0;
+    background:#000;
+  }
+
+  .noscreen{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    background:
+      radial-gradient(circle at 50% 40%, #1a1e24 0%, #0a0c0f 75%);
+  }
+
+  .noscreen .static{
+    width:100%;
+    height:100%;
+    position:absolute;
+    inset:0;
+    opacity:0.06;
+    background-image:
+      repeating-conic-gradient(#fff 0% 0.25%, #000 0% 0.5%);
+    background-size: 3px 3px;
+    animation: flicker 0.2s steps(2) infinite;
+  }
+  @keyframes flicker{
+    0%{ transform:translateY(0); }
+    100%{ transform:translateY(-3px); }
+  }
+
+  .noscreen .msg{
+    z-index:2;
+    font-family:var(--font-display);
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+    padding:0 20px;
+  }
+  .noscreen .msg b{ color:var(--text); display:block; font-size:16px; margin-bottom:6px; }
+
+  .now-playing{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+
+  .np-left{ display:flex; flex-direction:column; gap:4px; }
+  .np-eyebrow{
+    font-size:10px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .np-title{
+    font-family:var(--font-display);
+    font-size:20px;
+    letter-spacing:0.5px;
+  }
+
+  .controls{
+    display:flex;
+    gap:10px;
+  }
+  .ctrl-btn{
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--text);
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    padding:9px 14px;
+    border-radius:4px;
+    cursor:pointer;
+    transition:border-color .15s ease;
+  }
+  .ctrl-btn:hover{ border-color:var(--phosphor-dim); }
+
+  .setup{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:18px 20px;
+  }
+  .setup summary{
+    cursor:pointer;
+    font-family:var(--font-display);
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    font-size:12.5px;
+    color:var(--muted);
+  }
+  .setup[open] summary{ margin-bottom:12px; color:var(--text); }
+  .setup p, .setup li{ font-size:12.5px; line-height:1.7; color:var(--muted); }
+  .setup code{
+    color:var(--amber);
+    background:rgba(255,178,56,0.08);
+    padding:1px 5px;
+    border-radius:3px;
+    font-size:12px;
+  }
+  .setup pre{
+    background:#0A0C0E;
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:12px 14px;
+    overflow-x:auto;
+    font-size:12px;
+    color:var(--text);
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">SIGNAL<span>.</span></div>
+    <div class="sub">channel tuner</div>
+  </div>
+  <div class="status" id="statusPill">
+    <div class="dot"></div>
+    <span id="statusText">standby</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="rail">
+    <div class="rail-label">Presets</div>
+    <div id="presetList"></div>
+
+    <div class="rail-note">
+      These are demo streams so the tuner works out of the box. Swap the <code>src</code> values in <code>channels.js</code> for your own IPTV stream URLs.
+    </div>
+  </aside>
+
+  <main class="monitor-wrap">
+    <div class="screen" id="screen">
+      <video id="video" controls playsinline></video>
+      <iframe id="embedFrame" style="display:none;" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+      <div class="noscreen" id="noSignal">
+        <div class="static"></div>
+        <div class="msg"><b>NO SIGNAL</b>select a preset to tune in</div>
+      </div>
+    </div>
+
+    <div class="now-playing">
+      <div class="np-left">
+        <div class="np-eyebrow">Now tuned</div>
+        <div class="np-title" id="npTitle">— no channel selected —</div>
+      </div>
+      <div class="controls">
+        <button class="ctrl-btn" id="muteBtn">Mute</button>
+        <button class="ctrl-btn" id="stopBtn">Stop</button>
+      </div>
+    </div>
+
+    <details class="setup">
+      <summary>Add your own channels</summary>
+      <p>Open <code>channels.js</code> and edit the array. Each entry needs a channel number, a name, and either a <code>src</code> (a direct stream) or an <code>embed</code> (an iframe embed URL) — not both.</p>
+      <pre>// direct stream (plays in the built-in player)
+{ num: "01", name: "My Channel", src: "https://example.com/stream.m3u8" }
+
+// iframe embed (loads a provider's own player)
+{ num: "02", name: "My Other Channel", embed: "https://example.com/embed/xyz" }</pre>
+      <p>Only add channels you actually have the right to use — your own IPTV subscription's stream or embed links, a self-hosted stream, or content you have permission to distribute. This page is just the tuner; it doesn't come with any real channels built in, only placeholder demos.</p>
+    </details>
+  </main>
+
+</div>
+
+<script src="channels.js"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const embedFrame = document.getElementById('embedFrame');
+  const noSignal = document.getElementById('noSignal');
+  const presetList = document.getElementById('presetList');
+  const npTitle = document.getElementById('npTitle');
+  const statusPill = document.getElementById('statusPill');
+  const statusText = document.getElementById('statusText');
+  const muteBtn = document.getElementById('muteBtn');
+  const stopBtn = document.getElementById('stopBtn');
+
+  let hls = null;
+  let activeIndex = null;
+
+  function buildPresets(){
+    presetList.innerHTML = '';
+    CHANNELS.forEach((ch, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'preset';
+      btn.dataset.index = i;
+      btn.innerHTML = `
+        <span class="led"></span>
+        <span class="meta">
+          <span class="ch-num">CH ${ch.num}</span>
+          <span class="ch-name">${ch.name}</span>
+        </span>
+      `;
+      btn.addEventListener('click', () => tuneTo(i));
+      presetList.appendChild(btn);
+    });
+  }
+
+  function setStatus(live){
+    if(live){
+      statusPill.classList.add('live');
+      statusText.textContent = 'live';
+    } else {
+      statusPill.classList.remove('live');
+      statusText.textContent = 'standby';
+    }
+  }
+
+  function tuneTo(index){
+    const ch = CHANNELS[index];
+    if(!ch) return;
+    activeIndex = index;
+
+    document.querySelectorAll('.preset').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.index) === index);
+    });
+
+    npTitle.textContent = `CH ${ch.num} — ${ch.name}`;
+    noSignal.style.display = 'none';
+    setStatus(true);
+
+    if(hls){ hls.destroy(); hls = null; }
+
+    if(ch.embed){
+      // iframe embed mode — hand off to the provider's own player
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.style.display = 'none';
+
+      embedFrame.src = ch.embed;
+      embedFrame.style.display = 'block';
+      return;
+    }
+
+    // direct stream mode
+    embedFrame.style.display = 'none';
+    embedFrame.removeAttribute('src');
+    video.style.display = 'block';
+
+    const isM3u8 = ch.src.toLowerCase().includes('.m3u8');
+
+    if(isM3u8 && window.Hls && Hls.isSupported()){
+      hls = new Hls();
+      hls.loadSource(ch.src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (evt, data) => {
+        if(data.fatal) showError();
+      });
+      video.play().catch(()=>{});
+    } else if(isM3u8 && video.canPlayType('application/vnd.apple.mpegurl')){
+      video.src = ch.src;
+      video.play().catch(()=>{});
+    } else {
+      video.src = ch.src;
+      video.play().catch(()=>{});
+    }
+
+    video.onerror = showError;
+  }
+
+  function showError(){
+    noSignal.style.display = 'flex';
+    noSignal.querySelector('.msg').innerHTML = '<b>SIGNAL LOST</b>this stream didn\'t respond — check the URL in channels.js';
+    setStatus(false);
+  }
+
+  function stop(){
+    if(hls){ hls.destroy(); hls = null; }
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.style.display = 'block';
+    embedFrame.removeAttribute('src');
+    embedFrame.style.display = 'none';
+    noSignal.style.display = 'flex';
+    noSignal.querySelector('.msg').innerHTML = '<b>NO SIGNAL</b>select a preset to tune in';
+    npTitle.textContent = '— no channel selected —';
+    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+    activeIndex = null;
+    setStatus(false);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    video.muted = !video.muted;
+    muteBtn.textContent = video.muted ? 'Unmute' : 'Mute';
+  });
+  stopBtn.addEventListener('click', stop);
+
+  buildPresets();
+})();
+</script>
+
+</body>
+</html>
