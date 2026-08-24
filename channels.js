@@ -18,27 +18,27 @@
 const CHANNELS = [
   {
     num: "01",
-    name: "Demo — Big Buck Bunny",
-    src: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    name: "A Grandstand",
+    src: "https://dlstreams.st/stream/stream-123.php"
   },
   {
     num: "02",
-    name: "Demo — Sintel (HLS)",
-    src: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8"
+    name: "A Football",
+    src: "https://dlstreams.st/stream/stream-124.php"
   },
   {
     num: "03",
-    name: "Demo — Apple HLS Sample",
-    src: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8"
+    name: "Al Quran Al Kareem (Dns)",
+    src: "https://op-flashcon-digdayahd-1.dens.tv/h/h15/index.m3u8?app_type=web&userid=lite&chname=Quran_TV"
   },
   {
     num: "04",
-    name: "Demo — NASA Live (embed)",
-    embed: "https://www.youtube.com/embed/live_stream?channel=UCNwkvBoDag92nHiZBzbYicA&autoplay=1"
-  },
-  {
-    num: "05",
-    name: "My Channel (edit me)",
-    src: "https://example.com/replace-with-your-stream.m3u8"
-  }
+    name: "As Ch 100 ",
+    embed: "http://syok.tv:25461/live/843839483/33999/24192.ts"
+{
+  num: "05",
+  name: "A Warna",
+  src: "https://ucdn.starhubgo.com/bpk-tv/Astro_warna_new/output/manifest.mpd|X-Forwarded-For=119.56.77.101",
+  clearkey: "8b08559f2efb4075b6b31666b412932:d1f574a17ae1805bf390b58d2bf814c0"
+}
 ];
